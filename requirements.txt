@@ -9,3 +9,5 @@ faiss-cpu
 pypdf
 sqlite-utils
 langchain-community
+tiktoken
+
