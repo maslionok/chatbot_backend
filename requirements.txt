@@ -8,3 +8,4 @@ openai
 faiss-cpu
 pypdf
 sqlite-utils
+langchain-community
