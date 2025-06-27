@@ -68,7 +68,7 @@ def generate_rag_reply(question: str) -> str:
     # Vector-based context from PDFs
     retriever = vector_store.as_retriever()
     qa_chain = RetrievalQA.from_chain_type(
-        llm=ChatOpenAI(openai_api_key=OPENAI_API_KEY, model="gpt-4o"),
+        llm=ChatOpenAI(openai_api_key=OPENAI_API_KEY),
         retriever=retriever
     )
     pdf_answer = qa_chain.run(question)
@@ -85,7 +85,7 @@ Document-based answer:
 
 Now provide a helpful, complete response to the user using all available context.
 """
-    model = ChatOpenAI(openai_api_key=OPENAI_API_KEY, model="gpt-4o")
+    model = ChatOpenAI(openai_api_key=OPENAI_API_KEY)
     result = model.invoke(final_prompt)
     return result.content
 
@@ -93,8 +93,10 @@ def send_reply_to_chatwoot(conversation_id: int, content: str):
     url = f"{CHATWOOT_URL}/api/v1/accounts/{CHATWOOT_ACCOUNT_ID}/conversations/{conversation_id}/messages"
     headers = {"api_access_token": CHATWOOT_API_KEY}
     payload = {
-        "content": content,
-        "message_type": "outgoing"
+    "content": content,
+    "message_type": "outgoing",
+    "user_id": 6
     }
+
     response = requests.post(url, json=payload, headers=headers)
     print("Chatwoot API response:", response.status_code, response.text)
