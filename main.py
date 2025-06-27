@@ -68,7 +68,7 @@ def generate_rag_reply(question: str) -> str:
     # Vector-based context from PDFs
     retriever = vector_store.as_retriever()
     qa_chain = RetrievalQA.from_chain_type(
-        llm=ChatOpenAI(openai_api_key=OPENAI_API_KEY),
+        llm=ChatOpenAI(openai_api_key=OPENAI_API_KEY, model="gpt-4o"),
         retriever=retriever
     )
     pdf_answer = qa_chain.run(question)
@@ -85,7 +85,7 @@ Document-based answer:
 
 Now provide a helpful, complete response to the user using all available context.
 """
-    model = ChatOpenAI(openai_api_key=OPENAI_API_KEY)
+    model = ChatOpenAI(openai_api_key=OPENAI_API_KEY, model="gpt-4o")
     result = model.invoke(final_prompt)
     return result.content
 
