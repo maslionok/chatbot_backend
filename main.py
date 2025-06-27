@@ -23,6 +23,9 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 # LangChain
 embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
 
+# Track which conversations have AI enabled
+ai_enabled_per_conversation = {}
+
 # Load PDFs
 def build_vector_index_from_pdfs(pdf_dir="docs"):
     docs = []
@@ -35,12 +38,11 @@ def build_vector_index_from_pdfs(pdf_dir="docs"):
     texts = text_splitter.split_documents(docs)
     return FAISS.from_documents(texts, embeddings)
 
-# Load context at startup
+# Vector index on startup
 vector_store = build_vector_index_from_pdfs()
 
-# Load `.db` if needed
+# Optional .db query
 def query_db(question):
-    # Simple hardcoded example — customize for your schema
     conn = sqlite3.connect("data/mydata.db")
     cur = conn.cursor()
     if "email" in question:
@@ -48,6 +50,17 @@ def query_db(question):
         return "\n".join(row[0] for row in cur.fetchall())
     return ""
 
+# GPT-based intent detection
+def detect_user_intent(message: str) -> str:
+    model = ChatOpenAI(openai_api_key=OPENAI_API_KEY)
+    system_msg = """You are a classifier that reads user messages and outputs ONLY ONE of the following:
+- 'human' if user wants to speak to a human
+- 'ai' if user wants to re-enable the AI bot
+- 'none' if the message is normal and doesn't relate to either
+Do not explain. Just return one word: human, ai, or none."""
+    return model.invoke(message, system_message=system_msg).content.strip().lower()
+
+# Main webhook
 @app.post("/webhook")
 async def webhook(request: Request):
     data = await request.json()
@@ -59,13 +72,29 @@ async def webhook(request: Request):
     conversation_id = data["conversation"]["id"]
     message = data.get("content", "")
 
+    intent = detect_user_intent(message)
+
+    if intent == "human":
+        ai_enabled_per_conversation[conversation_id] = False
+        send_reply_to_chatwoot(conversation_id, "Sure, I've alerted a human to join the conversation.")
+        return {"status": "handoff"}
+    
+    if intent == "ai":
+        ai_enabled_per_conversation[conversation_id] = True
+        send_reply_to_chatwoot(conversation_id, "AI assistant re-enabled. How can I help?")
+        return {"status": "re-enabled"}
+
+    if not ai_enabled_per_conversation.get(conversation_id, True):
+        print(f"AI disabled for conversation {conversation_id}")
+        return {"status": "waiting-for-human"}
+
     reply = generate_rag_reply(message)
     send_reply_to_chatwoot(conversation_id, reply)
 
     return {"status": "ok"}
 
+# RAG-based reply
 def generate_rag_reply(question: str) -> str:
-    # Vector-based context from PDFs
     retriever = vector_store.as_retriever()
     qa_chain = RetrievalQA.from_chain_type(
         llm=ChatOpenAI(openai_api_key=OPENAI_API_KEY),
@@ -73,7 +102,6 @@ def generate_rag_reply(question: str) -> str:
     )
     pdf_answer = qa_chain.run(question)
 
-    # Add optional context from .db
     db_context = query_db(question)
     final_prompt = f"""User question: {question}
 
@@ -89,6 +117,7 @@ Now provide a helpful, complete response to the user using all available context
     result = model.invoke(final_prompt)
     return result.content
 
+# Chatwoot reply
 def send_reply_to_chatwoot(conversation_id: int, content: str):
     url = f"{CHATWOOT_URL}/api/v1/accounts/{CHATWOOT_ACCOUNT_ID}/conversations/{conversation_id}/messages"
     headers = {"api_access_token": CHATWOOT_API_KEY}
