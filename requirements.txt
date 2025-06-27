@@ -3,3 +3,8 @@ uvicorn
 requests
 openai
 python-dotenv
+langchain
+openai
+faiss-cpu
+pypdf
+sqlite-utils
