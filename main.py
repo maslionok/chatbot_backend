@@ -93,10 +93,8 @@ def send_reply_to_chatwoot(conversation_id: int, content: str):
     url = f"{CHATWOOT_URL}/api/v1/accounts/{CHATWOOT_ACCOUNT_ID}/conversations/{conversation_id}/messages"
     headers = {"api_access_token": CHATWOOT_API_KEY}
     payload = {
-    "content": content,
-    "message_type": "outgoing",
-    "user_id": 6
+        "content": content,
+        "message_type": "outgoing"
     }
-
     response = requests.post(url, json=payload, headers=headers)
     print("Chatwoot API response:", response.status_code, response.text)
