@@ -49,7 +49,7 @@ vector_store = build_vector_index_from_pdfs()
 # Optional .db data
 def query_db(question):
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    db_path = os.path.join(base_dir, "data", "cache.db.db")
+    db_path = os.path.join(base_dir, "data", "cache.db")
 
     conn = sqlite3.connect(db_path)
     cur = conn.cursor()
@@ -151,21 +151,20 @@ def generate_rag_reply(question: str) -> str:
     pdf_answer = qa_chain.run(question)
     db_context = query_db(question)
 
-    final_prompt = f"""
-        You are a friendly and professional assistant who helps customers with any information related to curtains.
-        Try to answer the user's question using the context provided below, but if it’s a common question and not explicitly answered in the data, it’s okay to use general knowledge — as long as it’s highly likely to be correct.
+    final_prompt = f"""User question: {question}Add commentMore actions
 
-        If you're not confident in your answer or if it's very specific, say you're unsure and suggest speaking to a real human.
 
-        User question: {question}
 
-        Database context:
-        {db_context}
 
-        Document-based answer:
-        {pdf_answer}
 
-        Now respond to the user in a helpful, clear, and honest way. Be conversational and kind.
+
+    Database context:
+    {db_context}
+
+    Document-based answer:
+    {pdf_answer}
+
+    Now provide a helpful, complete response to the user using all available context.
     """
 
     model = ChatOpenAI(openai_api_key=OPENAI_API_KEY)
