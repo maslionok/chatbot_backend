@@ -96,7 +96,7 @@ async def contact_opened(request: Request):
     now = datetime.utcnow()
     last_greet = last_greet_sent.get(conversation_id)
 
-    if last_greet and now - last_greet < timedelta(minutes=20):
+    if last_greet and now - last_greet < timedelta(minutes=1):
         print(f"Skipping greet for conversation {conversation_id}: recently greeted.")
         return {"status": "skipped"}
 
