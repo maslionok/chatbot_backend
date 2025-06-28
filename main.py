@@ -50,13 +50,19 @@ def query_db(question):
     base_dir = os.path.dirname(os.path.abspath(__file__))
     db_path = os.path.join(base_dir, "data", "cache.db")
 
+    print(f"[DEBUG] query_db called with question: {question}")
+
     conn = sqlite3.connect(db_path)
     cur = conn.cursor()
 
     if "email" in question.lower():
+        print("[DEBUG] Detected 'email' in question, querying DB.")
         cur.execute("SELECT email FROM customers LIMIT 5;")
-        return "\n".join(row[0] for row in cur.fetchall())
+        result = "\n".join(row[0] for row in cur.fetchall())
+        print(f"[DEBUG] DB result: {result}")
+        return result
 
+    print("[DEBUG] No DB query performed.")
     return ""
 
 @app.post("/webhook")
@@ -149,19 +155,28 @@ def generate_rag_reply(question: str) -> str:
     )
     pdf_answer = qa_chain.run(question)
     db_context = query_db(question)
+    print(f"[DEBUG] db_context in generate_rag_reply: {db_context}")
 
-    final_prompt = f"""User question: {question}
+    # Compose context for the prompt
+    context = ""
+    if db_context:
+        context += f"Database context:\n{db_context}\n\n"
+    context += f"Document-based answer:\n{pdf_answer}"
 
-Database context:
-{db_context}
+    # System prompt to avoid hallucination
+    system_prompt = (
+        "You are a precise assistant. Answer ONLY based on the provided context below. "
+        "If the answer is not in the context, say you don't know. "
+        "Be concise, step-by-step if needed, and do not use any outside knowledge. "
+        "If you don't know the answer, also tell the user they can ask to be switched to a real human."
+    )
+    user_prompt = f"Context:\n{context}\n\nQuestion: {question}"
 
-Document-based answer:
-{pdf_answer}
-
-Now provide a helpful, complete response to the user using all available context.
-"""
     model = ChatOpenAI(openai_api_key=OPENAI_API_KEY)
-    result = model.invoke(final_prompt)
+    result = model.invoke([
+        SystemMessage(content=system_prompt),
+        HumanMessage(content=user_prompt)
+    ])
     return result.content
 
 def send_reply_to_chatwoot(conversation_id: int, content: str):
