@@ -163,11 +163,13 @@ def generate_rag_reply(question: str) -> str:
         context += f"Database context:\n{db_context}\n\n"
     context += f"Document-based answer:\n{pdf_answer}"
 
-    # System prompt to avoid hallucination
+    # Polite, friendly, and helpful system prompt
     system_prompt = (
-        "You are a precise assistant. Answer ONLY based on the provided context below. "
-        "If the answer is not in the context, say you don't know. "
-        "Be concise, step-by-step if needed, and do not use any outside knowledge. "
+        "You are a precise and polite assistant. Answer ONLY based on the provided context below. "
+        "If the answer is not in the context, say you don't know in a friendly and polite way. "
+        "Be helpful and avoid rudeness. "
+        "If the answer must be short, try to make it a bit longer and more polite, offering a friendly tone. "
+        "Do not use any outside knowledge. "
         "If you don't know the answer, also tell the user they can ask to be switched to a real human."
     )
     user_prompt = f"Context:\n{context}\n\nQuestion: {question}"
