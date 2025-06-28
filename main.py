@@ -60,21 +60,18 @@ async def webhook(request: Request):
     conversation_id = data["conversation"]["id"]
     message = data.get("content", "")
 
-    # Detect user intent
     intent = detect_user_intent(message)
     print(f"User intent: {intent}")
 
     if intent == "human":
         conversation_ai_status[conversation_id] = False
-        send_reply_to_chatwoot(conversation_id, "Switching to a real agent, please wait...")
         return {"status": "AI paused"}
 
     elif intent == "ai":
         conversation_ai_status[conversation_id] = True
-        send_reply_to_chatwoot(conversation_id, "🤖 AI re-enabled. Ask me anything!")
+        send_reply_to_chatwoot(conversation_id, "🤖 AI re-enabled. Ask me anything about curtains!")
         return {"status": "AI re-enabled"}
 
-    # Default behavior
     if not conversation_ai_status.get(conversation_id, True):
         return {"status": "AI paused - human in control"}
 
@@ -105,7 +102,12 @@ def generate_rag_reply(question: str) -> str:
     pdf_answer = qa_chain.run(question)
     db_context = query_db(question)
 
-    final_prompt = f"""User question: {question}
+    final_prompt = f"""
+You are a friendly and professional assistant that helps customers with any information related to curtains. 
+You should ONLY answer using the information provided below. If you are not certain about something, politely say 
+you're not sure and let the user know they can always ask to speak to a real human.
+
+User question: {question}
 
 Database context:
 {db_context}
@@ -113,7 +115,7 @@ Database context:
 Document-based answer:
 {pdf_answer}
 
-Now provide a helpful, complete response to the user using all available context.
+Using only the information above, provide a helpful and honest reply to the user. If unsure, admit it and suggest speaking to a human.
 """
     model = ChatOpenAI(openai_api_key=OPENAI_API_KEY)
     result = model.invoke(final_prompt)
