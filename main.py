@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Request
 import os
 import requests
+import asyncio
 from dotenv import load_dotenv
 from langchain.embeddings.openai import OpenAIEmbeddings
 from langchain.vectorstores import FAISS
@@ -37,7 +38,6 @@ def build_vector_index_from_pdfs(pdf_dir="docs"):
     texts = text_splitter.split_documents(docs)
     return FAISS.from_documents(texts, embeddings)
 
-# Load context at startup
 vector_store = build_vector_index_from_pdfs()
 
 # Optional .db data
@@ -67,7 +67,6 @@ async def webhook(request: Request):
         conversation_ai_status[conversation_id] = False
         send_reply_to_chatwoot(conversation_id, "Switching to a real agent, please wait...")
         return {"status": "AI paused"}
-
     elif intent == "ai":
         conversation_ai_status[conversation_id] = True
         send_reply_to_chatwoot(conversation_id, "🤖 AI re-enabled. Ask me anything about curtains!")
@@ -79,6 +78,29 @@ async def webhook(request: Request):
     reply = generate_rag_reply(message)
     send_reply_to_chatwoot(conversation_id, reply)
     return {"status": "ok"}
+
+@app.post("/contact_opened")
+async def contact_opened(request: Request):
+    data = await request.json()
+    print("Contact opened:", data)
+    conversation_id = data["conversation"]["id"]
+    asyncio.create_task(wait_and_greet(conversation_id))
+    return {"status": "ok"}
+
+async def wait_and_greet(conversation_id: int):
+    await asyncio.sleep(60)
+    if is_user_still_inactive(conversation_id):
+        send_reply_to_chatwoot(conversation_id, "Hey 👋 Could I assist you today?")
+
+def is_user_still_inactive(conversation_id: int) -> bool:
+    url = f"{CHATWOOT_URL}/api/v1/accounts/{CHATWOOT_ACCOUNT_ID}/conversations/{conversation_id}/messages"
+    headers = {"api_access_token": CHATWOOT_API_KEY}
+    response = requests.get(url, headers=headers)
+    if response.status_code != 200:
+        print("Failed to check messages:", response.text)
+        return False
+    messages = response.json().get("payload", [])
+    return all(msg["message_type"] != "incoming" for msg in messages)
 
 def detect_user_intent(message: str) -> str:
     model = ChatOpenAI(openai_api_key=OPENAI_API_KEY)
