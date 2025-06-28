@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Request
 import os
 import requests
-import asyncio
+# import asyncio  # No longer used for auto-greetings
 from dotenv import load_dotenv
 from langchain.embeddings.openai import OpenAIEmbeddings
 from langchain.vectorstores import FAISS
@@ -11,7 +11,7 @@ from langchain.chains import RetrievalQA
 from langchain.chat_models import ChatOpenAI
 from langchain.schema import SystemMessage, HumanMessage
 import sqlite3
-from datetime import datetime, timedelta
+# from datetime import datetime, timedelta  # No longer needed for greetings
 
 load_dotenv()
 app = FastAPI()
@@ -24,13 +24,12 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 # Global stores
 conversation_ai_status = {}
-last_greet_sent = {}
+# last_greet_sent = {}  # Removed greeting tracking
 
 # LangChain
 embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
 
 # Load PDFs
-
 def build_vector_index_from_pdfs():
     base_dir = os.path.dirname(os.path.abspath(__file__))
     pdf_dir = os.path.join(base_dir, "docs")
@@ -90,43 +89,43 @@ async def webhook(request: Request):
     send_reply_to_chatwoot(conversation_id, reply)
     return {"status": "ok"}
 
-@app.post("/contact_opened")
-async def contact_opened(request: Request):
-    data = await request.json()
-    print("Contact opened:", data)
+# @app.post("/contact_opened")
+# async def contact_opened(request: Request):
+#     data = await request.json()
+#     print("Contact opened:", data)
 
-    conversation = data.get("current_conversation")
-    if not conversation or "id" not in conversation:
-        print("Missing conversation ID in payload.")
-        return {"status": "error", "detail": "Missing conversation ID."}
+#     conversation = data.get("current_conversation")
+#     if not conversation or "id" not in conversation:
+#         print("Missing conversation ID in payload.")
+#         return {"status": "error", "detail": "Missing conversation ID."}
 
-    conversation_id = conversation["id"]
+#     conversation_id = conversation["id"]
 
-    now = datetime.utcnow()
-    last_greet = last_greet_sent.get(conversation_id)
+#     now = datetime.utcnow()
+#     last_greet = last_greet_sent.get(conversation_id)
 
-    if last_greet and now - last_greet < timedelta(minutes=20):
-        print(f"Skipping greet for conversation {conversation_id}: recently greeted.")
-        return {"status": "skipped"}
+#     if last_greet and now - last_greet < timedelta(minutes=20):
+#         print(f"Skipping greet for conversation {conversation_id}: recently greeted.")
+#         return {"status": "skipped"}
 
-    last_greet_sent[conversation_id] = now
-    asyncio.create_task(wait_and_greet(conversation_id))
-    return {"status": "ok"}
+#     last_greet_sent[conversation_id] = now
+#     asyncio.create_task(wait_and_greet(conversation_id))
+#     return {"status": "ok"}
 
-async def wait_and_greet(conversation_id: int):
-    await asyncio.sleep(60)
-    if is_user_still_inactive(conversation_id):
-        send_reply_to_chatwoot(conversation_id, "Hey 👋 Could I assist you today?")
+# async def wait_and_greet(conversation_id: int):
+#     await asyncio.sleep(60)
+#     if is_user_still_inactive(conversation_id):
+#         send_reply_to_chatwoot(conversation_id, "Hey 👋 Could I assist you today?")
 
-def is_user_still_inactive(conversation_id: int) -> bool:
-    url = f"{CHATWOOT_URL}/api/v1/accounts/{CHATWOOT_ACCOUNT_ID}/conversations/{conversation_id}/messages"
-    headers = {"api_access_token": CHATWOOT_API_KEY}
-    response = requests.get(url, headers=headers)
-    if response.status_code != 200:
-        print("Failed to check messages:", response.text)
-        return False
-    messages = response.json().get("payload", [])
-    return all(msg["message_type"] != "incoming" for msg in messages)
+# def is_user_still_inactive(conversation_id: int) -> bool:
+#     url = f"{CHATWOOT_URL}/api/v1/accounts/{CHATWOOT_ACCOUNT_ID}/conversations/{conversation_id}/messages"
+#     headers = {"api_access_token": CHATWOOT_API_KEY}
+#     response = requests.get(url, headers=headers)
+#     if response.status_code != 200:
+#         print("Failed to check messages:", response.text)
+#         return False
+#     messages = response.json().get("payload", [])
+#     return all(msg["message_type"] != "incoming" for msg in messages)
 
 def detect_user_intent(message: str) -> str:
     model = ChatOpenAI(openai_api_key=OPENAI_API_KEY)
@@ -143,7 +142,7 @@ Do not explain. Just return one word: human, ai, or none."""),
     return response.content.strip().lower()
 
 def generate_rag_reply(question: str) -> str:
-    retriever = vector_store.as_retriever()
+    retriever = vector_store.as_retriever(search_kwargs={"k": 3})
     qa_chain = RetrievalQA.from_chain_type(
         llm=ChatOpenAI(openai_api_key=OPENAI_API_KEY),
         retriever=retriever
@@ -151,22 +150,16 @@ def generate_rag_reply(question: str) -> str:
     pdf_answer = qa_chain.run(question)
     db_context = query_db(question)
 
-    final_prompt = f"""User question: {question}Add commentMore actions
+    final_prompt = f"""User question: {question}
 
+Database context:
+{db_context}
 
+Document-based answer:
+{pdf_answer}
 
-
-
-
-    Database context:
-    {db_context}
-
-    Document-based answer:
-    {pdf_answer}
-
-    Now provide a helpful, complete response to the user using all available context.
-    """
-
+Now provide a helpful, complete response to the user using all available context.
+"""
     model = ChatOpenAI(openai_api_key=OPENAI_API_KEY)
     result = model.invoke(final_prompt)
     return result.content
