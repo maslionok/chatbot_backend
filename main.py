@@ -85,18 +85,25 @@ async def webhook(request: Request):
 async def contact_opened(request: Request):
     data = await request.json()
     print("Contact opened:", data)
-    conversation_id = data["conversation"]["id"]
+
+    conversation = data.get("current_conversation")
+    if not conversation or "id" not in conversation:
+        print("Missing conversation ID in payload.")
+        return {"status": "error", "detail": "Missing conversation ID."}
+
+    conversation_id = conversation["id"]
 
     now = datetime.utcnow()
     last_greet = last_greet_sent.get(conversation_id)
 
-    if last_greet and now - last_greet < timedelta(minutes=1):
+    if last_greet and now - last_greet < timedelta(minutes=20):
         print(f"Skipping greet for conversation {conversation_id}: recently greeted.")
         return {"status": "skipped"}
 
     last_greet_sent[conversation_id] = now
     asyncio.create_task(wait_and_greet(conversation_id))
     return {"status": "ok"}
+
 
 async def wait_and_greet(conversation_id: int):
     await asyncio.sleep(5)
