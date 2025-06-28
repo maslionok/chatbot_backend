@@ -30,7 +30,11 @@ last_greet_sent = {}
 embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
 
 # Load PDFs
-def build_vector_index_from_pdfs(pdf_dir="docs"):
+
+def build_vector_index_from_pdfs():
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    pdf_dir = os.path.join(base_dir, "docs")
+
     docs = []
     for file in os.listdir(pdf_dir):
         if file.endswith(".pdf"):
@@ -44,11 +48,16 @@ vector_store = build_vector_index_from_pdfs()
 
 # Optional .db data
 def query_db(question):
-    conn = sqlite3.connect("data/mydata.db")
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    db_path = os.path.join(base_dir, "data", "cache.db.db")
+
+    conn = sqlite3.connect(db_path)
     cur = conn.cursor()
+
     if "email" in question.lower():
         cur.execute("SELECT email FROM customers LIMIT 5;")
         return "\n".join(row[0] for row in cur.fetchall())
+
     return ""
 
 @app.post("/webhook")
@@ -96,7 +105,7 @@ async def contact_opened(request: Request):
     now = datetime.utcnow()
     last_greet = last_greet_sent.get(conversation_id)
 
-    if last_greet and now - last_greet < timedelta(minutes=1):
+    if last_greet and now - last_greet < timedelta(minutes=20):
         print(f"Skipping greet for conversation {conversation_id}: recently greeted.")
         return {"status": "skipped"}
 
@@ -104,9 +113,8 @@ async def contact_opened(request: Request):
     asyncio.create_task(wait_and_greet(conversation_id))
     return {"status": "ok"}
 
-
 async def wait_and_greet(conversation_id: int):
-    await asyncio.sleep(5)
+    await asyncio.sleep(60)
     if is_user_still_inactive(conversation_id):
         send_reply_to_chatwoot(conversation_id, "Hey 👋 Could I assist you today?")
 
