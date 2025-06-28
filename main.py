@@ -160,6 +160,7 @@ def generate_rag_reply(question: str) -> str:
     # Compose context for the prompt
     context = ""
     if db_context:
+        print(f"[DEBUG] We actually have db_context")
         context += f"Database context:\n{db_context}\n\n"
     context += f"Document-based answer:\n{pdf_answer}"
 
