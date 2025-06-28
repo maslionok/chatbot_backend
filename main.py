@@ -152,20 +152,22 @@ def generate_rag_reply(question: str) -> str:
     db_context = query_db(question)
 
     final_prompt = f"""
-You are a friendly and professional assistant that helps customers with any information related to curtains. 
-You should ONLY answer using the information provided below. If you are not certain about something, politely say 
-you're not sure and let the user know they can always ask to speak to a real human.
+        You are a friendly and professional assistant who helps customers with any information related to curtains.
+        Try to answer the user's question using the context provided below, but if it’s a common question and not explicitly answered in the data, it’s okay to use general knowledge — as long as it’s highly likely to be correct.
 
-User question: {question}
+        If you're not confident in your answer or if it's very specific, say you're unsure and suggest speaking to a real human.
 
-Database context:
-{db_context}
+        User question: {question}
 
-Document-based answer:
-{pdf_answer}
+        Database context:
+        {db_context}
 
-Using only the information above, provide a helpful and honest reply to the user. If unsure, admit it and suggest speaking to a human.
-"""
+        Document-based answer:
+        {pdf_answer}
+
+        Now respond to the user in a helpful, clear, and honest way. Be conversational and kind.
+    """
+
     model = ChatOpenAI(openai_api_key=OPENAI_API_KEY)
     result = model.invoke(final_prompt)
     return result.content
