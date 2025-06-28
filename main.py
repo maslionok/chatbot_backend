@@ -11,6 +11,7 @@ from langchain.chains import RetrievalQA
 from langchain.chat_models import ChatOpenAI
 from langchain.schema import SystemMessage, HumanMessage
 import sqlite3
+from datetime import datetime, timedelta
 
 load_dotenv()
 app = FastAPI()
@@ -21,8 +22,9 @@ CHATWOOT_API_KEY = os.getenv("CHATWOOT_API_KEY")
 CHATWOOT_ACCOUNT_ID = os.getenv("CHATWOOT_ACCOUNT_ID")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-# Global toggle store for conversations
+# Global stores
 conversation_ai_status = {}
+last_greet_sent = {}
 
 # LangChain
 embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
@@ -84,11 +86,20 @@ async def contact_opened(request: Request):
     data = await request.json()
     print("Contact opened:", data)
     conversation_id = data["conversation"]["id"]
+
+    now = datetime.utcnow()
+    last_greet = last_greet_sent.get(conversation_id)
+
+    if last_greet and now - last_greet < timedelta(minutes=1):
+        print(f"Skipping greet for conversation {conversation_id}: recently greeted.")
+        return {"status": "skipped"}
+
+    last_greet_sent[conversation_id] = now
     asyncio.create_task(wait_and_greet(conversation_id))
     return {"status": "ok"}
 
 async def wait_and_greet(conversation_id: int):
-    await asyncio.sleep(60)
+    await asyncio.sleep(5)
     if is_user_still_inactive(conversation_id):
         send_reply_to_chatwoot(conversation_id, "Hey 👋 Could I assist you today?")
 
