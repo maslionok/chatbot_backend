@@ -65,6 +65,7 @@ async def webhook(request: Request):
 
     if intent == "human":
         conversation_ai_status[conversation_id] = False
+        send_reply_to_chatwoot(conversation_id, "Switching to a real agent, please wait...")
         return {"status": "AI paused"}
 
     elif intent == "ai":
