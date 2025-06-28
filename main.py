@@ -51,19 +51,40 @@ def query_db(question):
     db_path = os.path.join(base_dir, "data", "cache.db")
 
     print(f"[DEBUG] query_db called with question: {question}")
+    print(f"[DEBUG] Looking for DB at: {db_path}")
 
-    conn = sqlite3.connect(db_path)
-    cur = conn.cursor()
+    if not os.path.exists(db_path):
+        print(f"[ERROR] Database file does not exist at {db_path}")
+        return ""
 
-    if "email" in question.lower():
-        print("[DEBUG] Detected 'email' in question, querying DB.")
-        cur.execute("SELECT email FROM customers LIMIT 5;")
-        result = "\n".join(row[0] for row in cur.fetchall())
-        print(f"[DEBUG] DB result: {result}")
-        return result
+    conn = None
+    try:
+        conn = sqlite3.connect(db_path)
+        cur = conn.cursor()
 
-    print("[DEBUG] No DB query performed.")
-    return ""
+        if "email" in question.lower():
+            print("[DEBUG] Detected 'email' in question, querying DB.")
+            try:
+                cur.execute("SELECT email FROM customers LIMIT 5;")
+                rows = cur.fetchall()
+                if rows:
+                    result = "\n".join(row[0] for row in rows)
+                    print(f"[DEBUG] DB result: {result}")
+                    return result
+                else:
+                    print("[DEBUG] Query returned no results.")
+                    return ""
+            except Exception as e:
+                print(f"[ERROR] DB query failed: {e}")
+                return ""
+        print("[DEBUG] No DB query performed.")
+        return ""
+    except Exception as e:
+        print(f"[ERROR] Could not connect to DB: {e}")
+        return ""
+    finally:
+        if conn:
+            conn.close()
 
 @app.post("/webhook")
 async def webhook(request: Request):
