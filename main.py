@@ -48,7 +48,7 @@ vector_store = build_vector_index_from_pdfs()
 
 def query_db(question):
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    shelve_path = os.path.join(base_dir, ".cache", "cache")  # Do NOT add ".db"
+    shelve_path = os.path.join(base_dir, "data", "cache")  # Do NOT add ".db"
 
     print(f"[DEBUG] query_db called with question: {question}")
     print(f"[DEBUG] Looking for shelve DB at: {shelve_path}")
