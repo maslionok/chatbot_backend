@@ -60,23 +60,6 @@ def embed_query(query: str):
     resp = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY, model=EMBED_MODEL).embed_query(query)
     return np.array([resp]).astype("float32")
 
-def get_conversation_history(conversation_id: int):
-    """Fetch the full conversation history from Chatwoot and return as a list of (role, content) tuples."""
-    url = f"{CHATWOOT_URL}/api/v1/accounts/{CHATWOOT_ACCOUNT_ID}/conversations/{conversation_id}/messages"
-    headers = {"api_access_token": CHATWOOT_API_KEY}
-    response = requests.get(url, headers=headers)
-    if response.status_code != 200:
-        print("Failed to fetch conversation history:", response.text)
-        return []
-    messages = response.json().get("payload", [])
-    history = []
-    for msg in messages:
-        if msg["message_type"] == "incoming":
-            history.append(("user", msg["content"]))
-        elif msg["message_type"] == "outgoing":
-            history.append(("assistant", msg["content"]))
-    return history
-
 @app.post("/webhook")
 async def webhook(request: Request):
     data = await request.json()
@@ -103,9 +86,7 @@ async def webhook(request: Request):
     if not conversation_ai_status.get(conversation_id, True):
         return {"status": "AI paused - human in control"}
 
-    # Fetch conversation history from Chatwoot
-    history = get_conversation_history(conversation_id)
-    reply = generate_rag_reply(message, history)
+    reply = generate_rag_reply(message)
     send_reply_to_chatwoot(conversation_id, reply)
     return {"status": "ok"}
 
@@ -151,9 +132,9 @@ def detect_user_intent(message: str) -> str:
     model = ChatOpenAI(openai_api_key=OPENAI_API_KEY)
     prompt = [
         SystemMessage(content="""You are a classifier that reads user messages and outputs ONLY ONE of the following:
-- 'human' if the user EXPLICITLY and CLEARLY asks to speak to a human (for example: "I want to talk to a human", "connect me to a real person", "can I speak to an agent", etc).
-- 'ai' if user wants to re-enable the AI bot.
-- 'none' if the message is normal, ambiguous, or does not clearly request a human or AI.
+- 'human' if user wants to speak to a human
+- 'ai' if user wants to re-enable the AI bot
+- 'none' if the message is normal and doesn't relate to either
 
 Do not explain. Just return one word: human, ai, or none."""),
         HumanMessage(content=message)
@@ -161,15 +142,16 @@ Do not explain. Just return one word: human, ai, or none."""),
     response = model.invoke(prompt)
     return response.content.strip().lower()
 
-def generate_rag_reply(question: str, history=None) -> str:
+def generate_rag_reply(question: str) -> str:
     # --- Use FAISS for retrieval ---
     if faiss_index is None or rag_chunks is None:
         return "Sorry, the knowledge base is not available right now."
     q_emb = embed_query(question)
-    D, I = faiss_index.search(q_emb, 10)
+    D, I = faiss_index.search(q_emb, 8)  # Retrieve top 8 chunks
     retrieved_chunks = [rag_chunks[i] for i in I[0] if i < len(rag_chunks)]
     context = "\n\n".join(retrieved_chunks)
 
+    # Compose prompt with only the most relevant context (much fewer tokens)
     system_prompt = (
         "You are an expert assistant specializing in curtains and our company. "
         "Answer user questions naturally, in a friendly and professional tone, as if you are speaking from your own expertise. "
@@ -179,28 +161,16 @@ def generate_rag_reply(question: str, history=None) -> str:
     )
     user_prompt = f"Context:\n{context}\n\nQuestion: {question}"
 
-    # --- Build message history for OpenAI ---
-    messages = [SystemMessage(content=system_prompt)]
-    messages.append(HumanMessage(content=user_prompt))
-    if history:
-        print(f"[DEBUG] Conversation history found: {len(history)} messages")
-        for role, content in history:
-            if role == "user":
-                messages.append(HumanMessage(content=content))
-            elif role == "assistant":
-                messages.append(SystemMessage(content=content))
-    else:
-        print("[DEBUG] No conversation history found")
-    # Add the current context/question as the last user message
-    messages.append(HumanMessage(content=user_prompt))
-
     # --- Debug: print word count estimate for input prompt ---
     total_words = len((system_prompt + user_prompt).split())
     approx_tokens = int(total_words * 0.75)
     print(f"[DEBUG] Input prompt: {total_words} words, ~{approx_tokens} tokens (words*0.75)")
 
     model = ChatOpenAI(openai_api_key=OPENAI_API_KEY, model_name=MODEL_NAME)
-    result = model.invoke(messages)
+    result = model.invoke([
+        SystemMessage(content=system_prompt),
+        HumanMessage(content=user_prompt)
+    ])
     return result.content
 
 def send_reply_to_chatwoot(conversation_id: int, content: str):
