@@ -47,8 +47,10 @@ def build_vector_index_from_pdfs():
 vector_store = build_vector_index_from_pdfs()
 
 def query_db(question):
+    # Use the same cache path as in app.py
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    shelve_path = os.path.join(base_dir, "data", "cache")  # Do NOT add ".db"
+    cache_dir = os.path.join(base_dir, ".cache")
+    shelve_path = os.path.join(cache_dir, "cache")  # Do NOT add ".db"
 
     print(f"[DEBUG] query_db called with question: {question}")
     print(f"[DEBUG] Looking for shelve DB at: {shelve_path}")
@@ -61,8 +63,8 @@ def query_db(question):
         with shelve.open(shelve_path) as db:
             mag_key = f"magento||{os.getenv('MAGENTO_STORE_CODE', '')}"
             if mag_key in db:
-                chunks, _ = db[mag_key]
-                sample = "\n\n".join(chunks[:3])  # Limit to 3 chunks
+                mag_chunks, _ = db[mag_key]
+                sample = "\n\n".join(mag_chunks[:3])  # Limit to 3 chunks
                 print(f"[DEBUG] Returning first chunks from shelve")
                 return sample
             else:
