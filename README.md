@@ -58,3 +58,10 @@ A connector between Chatwoot and a custom-prompted ChatGPT Q&A system.
 7. Click **Commit changes**.
 
 ---
+
+## 🌐 Getting a New Crawled Website or Magento API
+
+Currently, to crawl a new website or connect to a new Magento API, please contact me directly.  
+*A user-friendly script for this process will be provided in the future.*
+
+---

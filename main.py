@@ -13,6 +13,11 @@ from langchain.chat_models import ChatOpenAI
 from langchain.schema import SystemMessage, HumanMessage
 import sqlite3
 # from datetime import datetime, timedelta  # No longer needed for greetings
+import gzip
+import pickle
+import numpy as np
+
+MODEL_NAME = "gpt-4"
 
 load_dotenv()
 app = FastAPI()
@@ -46,10 +51,14 @@ def build_vector_index_from_pdfs():
 
 vector_store = build_vector_index_from_pdfs()
 
+def load_compressed(db, key):
+    """Load a compressed object from shelve."""
+    return pickle.loads(gzip.decompress(db[key]))
+
 def query_db(question):
-    # Use the same cache path as in app.py
+    # Use the new cache path as in crawl_and_cache.py
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    cache_dir = os.path.join(base_dir, ".cache")
+    cache_dir = os.path.join(base_dir, ".new_cache")
     shelve_path = os.path.join(cache_dir, "cache")  # Do NOT add ".db"
 
     print(f"[DEBUG] query_db called with question: {question}")
@@ -63,7 +72,9 @@ def query_db(question):
         with shelve.open(shelve_path) as db:
             mag_key = f"magento||{os.getenv('MAGENTO_STORE_CODE', '')}"
             if mag_key in db:
-                mag_chunks, _ = db[mag_key]
+                # Load and decompress the object
+                mag_chunks, mag_embs = load_compressed(db, mag_key)
+                # Optionally, you could use embeddings for similarity search here
                 sample = "\n\n".join(mag_chunks[:3])  # Limit to 3 chunks
                 print(f"[DEBUG] Returning first chunks from shelve")
                 return sample
@@ -185,7 +196,7 @@ def generate_rag_reply(question: str) -> str:
     )
     user_prompt = f"Context:\n{context}\n\nQuestion: {question}"
 
-    model = ChatOpenAI(openai_api_key=OPENAI_API_KEY)
+    model = ChatOpenAI(openai_api_key=OPENAI_API_KEY, model_name = MODEL_NAME)
     result = model.invoke([
         SystemMessage(content=system_prompt),
         HumanMessage(content=user_prompt)
