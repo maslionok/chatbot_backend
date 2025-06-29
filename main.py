@@ -155,18 +155,21 @@ Do not explain. Just return one word: human, ai, or none."""),
     return response.content.strip().lower()
 
 def generate_rag_reply(question: str) -> str:
+    # --- PDF retrieval ---
     retriever = vector_store.as_retriever(search_kwargs={"k": 3})
     qa_chain = RetrievalQA.from_chain_type(
         llm=ChatOpenAI(openai_api_key=OPENAI_API_KEY),
         retriever=retriever
     )
     pdf_answer = qa_chain.run(question)
+
+    # --- Website crawl retrieval ---
     crawl_chunks = load_crawl_chunks()
     # Use all crawl chunks for context
     crawl_context = "\n\n".join(crawl_chunks) if crawl_chunks else ""
     print(f"[DEBUG] crawl_context in generate_rag_reply: {crawl_context[:500]}...")  # Print only first 500 chars
 
-    # Compose context for the prompt
+    # --- Combine both sources for the prompt ---
     context = ""
     if crawl_context:
         print(f"[DEBUG] We actually have crawl_context")
