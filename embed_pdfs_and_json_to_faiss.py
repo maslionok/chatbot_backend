@@ -10,9 +10,7 @@ from dotenv import load_dotenv
 # --- Config ---
 load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-# Use a better embedding model for improved retrieval
-# For OpenAI, "text-embedding-3-large" is currently the best available (as of 2024)
-EMBED_MODEL = "text-embedding-3-large"
+EMBED_MODEL = "text-embedding-3-small"
 
 client = OpenAI(api_key=OPENAI_API_KEY)
 

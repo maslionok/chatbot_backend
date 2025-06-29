@@ -34,8 +34,11 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 conversation_ai_status = {}
 # last_greet_sent = {}  # Removed greeting tracking
 
+# Use the same embedding model for both library and user queries
+EMBED_MODEL = "text-embedding-3-small"  # Must match the model used in embed_pdfs_and_json_to_faiss.py
+
 # LangChain
-embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
+embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY, model=EMBED_MODEL)
 
 # --- RAG FAISS index and chunks ---
 def load_faiss_and_chunks():
@@ -53,7 +56,8 @@ def load_faiss_and_chunks():
 faiss_index, rag_chunks = load_faiss_and_chunks()
 
 def embed_query(query: str):
-    resp = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY).embed_query(query)
+    # Use the same model as for the library embeddings
+    resp = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY, model=EMBED_MODEL).embed_query(query)
     return np.array([resp]).astype("float32")
 
 @app.post("/webhook")
