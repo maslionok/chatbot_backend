@@ -151,9 +151,9 @@ def detect_user_intent(message: str) -> str:
     model = ChatOpenAI(openai_api_key=OPENAI_API_KEY)
     prompt = [
         SystemMessage(content="""You are a classifier that reads user messages and outputs ONLY ONE of the following:
-- 'human' if user wants to speak to a human
-- 'ai' if user wants to re-enable the AI bot
-- 'none' if the message is normal and doesn't relate to either
+- 'human' if the user EXPLICITLY and CLEARLY asks to speak to a human (for example: "I want to talk to a human", "connect me to a real person", "can I speak to an agent", etc).
+- 'ai' if user wants to re-enable the AI bot.
+- 'none' if the message is normal, ambiguous, or does not clearly request a human or AI.
 
 Do not explain. Just return one word: human, ai, or none."""),
         HumanMessage(content=message)
