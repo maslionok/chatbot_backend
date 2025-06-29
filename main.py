@@ -183,11 +183,14 @@ def generate_rag_reply(question: str, history=None) -> str:
     messages = [SystemMessage(content=system_prompt)]
     messages.append(HumanMessage(content=user_prompt))
     if history:
+        print(f"[DEBUG] Conversation history found: {len(history)} messages")
         for role, content in history:
             if role == "user":
                 messages.append(HumanMessage(content=content))
             elif role == "assistant":
                 messages.append(SystemMessage(content=content))
+    else:
+        print("[DEBUG] No conversation history found")
     # Add the current context/question as the last user message
     messages.append(HumanMessage(content=user_prompt))
 
