@@ -143,7 +143,7 @@ def generate_rag_reply(question: str) -> str:
     if faiss_index is None or rag_chunks is None:
         return "Sorry, the knowledge base is not available right now."
     q_emb = embed_query(question)
-    D, I = faiss_index.search(q_emb, 8)  # Retrieve top 8 chunks
+    D, I = faiss_index.search(q_emb, 50)  # Retrieve top 8 chunks
     retrieved_chunks = [rag_chunks[i] for i in I[0] if i < len(rag_chunks)]
     context = "\n\n".join(retrieved_chunks)
 
