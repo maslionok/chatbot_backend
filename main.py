@@ -56,31 +56,36 @@ def load_compressed(db, key):
     return pickle.loads(gzip.decompress(db[key]))
 
 def query_db(question):
-    # Use the new cache path as in crawl_and_cache.py
     base_dir = os.path.dirname(os.path.abspath(__file__))
     cache_dir = os.path.join(base_dir, ".cache")
-    shelve_path = os.path.join(cache_dir, "cache.db")  # Do NOT add ".db"
+    shelve_path = os.path.join(cache_dir, "cache.db.db")
 
     print(f"[DEBUG] query_db called with question: {question}")
     print(f"[DEBUG] Looking for shelve DB at: {shelve_path}")
 
-    if not os.path.exists(shelve_path + ".db"):
+    if not os.path.exists(shelve_path):
         print(f"[ERROR] Shelve DB file does not exist at {shelve_path}")
         return ""
 
     try:
         with shelve.open(shelve_path) as db:
-            mag_key = f"magento||{os.getenv('MAGENTO_STORE_CODE', '')}"
-            if mag_key in db:
-                # Load and decompress the object
-                mag_chunks, mag_embs = load_compressed(db, mag_key)
-                # Optionally, you could use embeddings for similarity search here
-                sample = "\n\n".join(mag_chunks[:3])  # Limit to 3 chunks
-                print(f"[DEBUG] Returning first chunks from shelve")
-                return sample
-            else:
-                print(f"[DEBUG] Key not found in shelve: {mag_key}")
-                return ""
+            all_chunks = []
+            for key in db:
+                try:
+                    value = load_compressed(db, key)
+                    # If value is a tuple (chunks, embs), take chunks
+                    if isinstance(value, tuple) and isinstance(value[0], list):
+                        all_chunks.extend(value[0])
+                    elif isinstance(value, list):
+                        all_chunks.extend(value)
+                    elif isinstance(value, str):
+                        all_chunks.append(value)
+                except Exception as e:
+                    print(f"[ERROR] Could not decompress key {key}: {e}")
+            # Limit to first 50 chunks for safety
+            sample = "\n\n".join(all_chunks[:50])
+            print(f"[DEBUG] Returning {len(all_chunks[:50])} chunks from shelve")
+            return sample
     except Exception as e:
         print(f"[ERROR] Failed to open or read shelve DB: {e}")
         return ""
