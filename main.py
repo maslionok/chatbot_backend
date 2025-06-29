@@ -35,7 +35,7 @@ conversation_ai_status = {}
 # last_greet_sent = {}  # Removed greeting tracking
 
 # Use the same embedding model for both library and user queries
-EMBED_MODEL = "text-embedding-3-small"  # Must match the model used in embed_pdfs_and_json_to_faiss.py
+EMBED_MODEL = "text-embedding-3-large"  # Must match the model used in embed_pdfs_and_json_to_faiss.py
 
 # LangChain
 embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY, model=EMBED_MODEL)
