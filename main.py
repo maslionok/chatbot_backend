@@ -17,6 +17,7 @@ import gzip
 import pickle
 import numpy as np
 import json
+import faiss
 
 MODEL_NAME = "gpt-4.1-mini"
 
@@ -36,41 +37,24 @@ conversation_ai_status = {}
 # LangChain
 embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
 
-# Load PDFs
-def build_vector_index_from_pdfs():
+# --- RAG FAISS index and chunks ---
+def load_faiss_and_chunks():
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    pdf_dir = os.path.join(base_dir, "docs")
+    faiss_path = os.path.join(base_dir, "data", "rag.index")
+    chunks_path = os.path.join(base_dir, "data", "rag_chunks.json")
+    if not os.path.exists(faiss_path) or not os.path.exists(chunks_path):
+        print(f"[ERROR] FAISS index or chunks file missing: {faiss_path}, {chunks_path}")
+        return None, None
+    index = faiss.read_index(faiss_path)
+    with open(chunks_path, "r", encoding="utf-8") as f:
+        chunks = json.load(f)
+    return index, chunks
 
-    docs = []
-    for file in os.listdir(pdf_dir):
-        if file.endswith(".pdf"):
-            loader = PyPDFLoader(os.path.join(pdf_dir, file))
-            docs.extend(loader.load())
-    text_splitter = CharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-    texts = text_splitter.split_documents(docs)
-    return FAISS.from_documents(texts, embeddings)
+faiss_index, rag_chunks = load_faiss_and_chunks()
 
-vector_store = build_vector_index_from_pdfs()
-
-def load_compressed(db, key):
-    """Load a compressed object from shelve."""
-    return pickle.loads(gzip.decompress(db[key]))
-
-def load_crawl_chunks():
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    crawl_json_path = os.path.join(base_dir, "data", "crawl_chunks.json")
-    print(f"[DEBUG] Loading crawl chunks from: {crawl_json_path}")
-    if not os.path.exists(crawl_json_path):
-        print(f"[ERROR] Crawl chunks file does not exist at {crawl_json_path}")
-        return []
-    try:
-        with open(crawl_json_path, "r", encoding="utf-8") as f:
-            chunks = json.load(f)
-            print(f"[DEBUG] Loaded {len(chunks)} crawl chunks")
-            return chunks
-    except Exception as e:
-        print(f"[ERROR] Failed to load crawl chunks: {e}")
-        return []
+def embed_query(query: str):
+    resp = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY).embed_query(query)
+    return np.array([resp]).astype("float32")
 
 @app.post("/webhook")
 async def webhook(request: Request):
@@ -155,30 +139,17 @@ Do not explain. Just return one word: human, ai, or none."""),
     return response.content.strip().lower()
 
 def generate_rag_reply(question: str) -> str:
-    # --- PDF retrieval ---
-    retriever = vector_store.as_retriever(search_kwargs={"k": 3})
-    qa_chain = RetrievalQA.from_chain_type(
-        llm=ChatOpenAI(openai_api_key=OPENAI_API_KEY),
-        retriever=retriever
-    )
-    pdf_answer = qa_chain.run(question)
+    # --- Use FAISS for retrieval ---
+    if faiss_index is None or rag_chunks is None:
+        return "Sorry, the knowledge base is not available right now."
+    q_emb = embed_query(question)
+    D, I = faiss_index.search(q_emb, 8)  # Retrieve top 8 chunks
+    retrieved_chunks = [rag_chunks[i] for i in I[0] if i < len(rag_chunks)]
+    context = "\n\n".join(retrieved_chunks)
 
-    # --- Website crawl retrieval ---
-    crawl_chunks = load_crawl_chunks()
-    # Use all crawl chunks for context
-    crawl_context = "\n\n".join(crawl_chunks) if crawl_chunks else ""
-    print(f"[DEBUG] crawl_context in generate_rag_reply: {crawl_context[:500]}...")  # Print only first 500 chars
-
-    # --- Combine both sources for the prompt ---
-    context = ""
-    if crawl_context:
-        print(f"[DEBUG] We actually have crawl_context")
-        context += f"Crawled website context:\n{crawl_context}\n\n"
-    context += f"Document-based answer:\n{pdf_answer}"
-
-    # Polite, friendly, and helpful system prompt
+    # Compose prompt with only the most relevant context (much fewer tokens)
     system_prompt = (
-        "You are a precise and polite assistant. Answer ONLY based on the provided context below."
+        "You are a precise and polite assistant. Answer ONLY based on the provided context below. "
         "If the answer is not in the context, say you don't know in a friendly and polite way. "
         "Be helpful and avoid rudeness. "
         "If the answer must be short, try to make it a bit longer and more polite, offering a friendly tone. "
@@ -187,7 +158,7 @@ def generate_rag_reply(question: str) -> str:
     )
     user_prompt = f"Context:\n{context}\n\nQuestion: {question}"
 
-    model = ChatOpenAI(openai_api_key=OPENAI_API_KEY, model_name = MODEL_NAME)
+    model = ChatOpenAI(openai_api_key=OPENAI_API_KEY, model_name=MODEL_NAME)
     result = model.invoke([
         SystemMessage(content=system_prompt),
         HumanMessage(content=user_prompt)
