@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Request
 import os
 import requests
+import shelve
 # import asyncio  # No longer used for auto-greetings
 from dotenv import load_dotenv
 from langchain.embeddings.openai import OpenAIEmbeddings
@@ -45,46 +46,32 @@ def build_vector_index_from_pdfs():
 
 vector_store = build_vector_index_from_pdfs()
 
-# Optional .db data
 def query_db(question):
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    db_path = os.path.join(base_dir, "data", "cache.db")
+    shelve_path = os.path.join(base_dir, ".cache", "cache")  # Do NOT add ".db"
 
     print(f"[DEBUG] query_db called with question: {question}")
-    print(f"[DEBUG] Looking for DB at: {db_path}")
+    print(f"[DEBUG] Looking for shelve DB at: {shelve_path}")
 
-    if not os.path.exists(db_path):
-        print(f"[ERROR] Database file does not exist at {db_path}")
+    if not os.path.exists(shelve_path + ".db"):
+        print(f"[ERROR] Shelve DB file does not exist at {shelve_path}")
         return ""
 
-    conn = None
     try:
-        conn = sqlite3.connect(db_path)
-        cur = conn.cursor()
-
-        if "email" in question.lower():
-            print("[DEBUG] Detected 'email' in question, querying DB.")
-            try:
-                cur.execute("SELECT email FROM customers LIMIT 5;")
-                rows = cur.fetchall()
-                if rows:
-                    result = "\n".join(row[0] for row in rows)
-                    print(f"[DEBUG] DB result: {result}")
-                    return result
-                else:
-                    print("[DEBUG] Query returned no results.")
-                    return ""
-            except Exception as e:
-                print(f"[ERROR] DB query failed: {e}")
+        with shelve.open(shelve_path) as db:
+            mag_key = f"magento||{os.getenv('MAGENTO_STORE_CODE', '')}"
+            if mag_key in db:
+                chunks, _ = db[mag_key]
+                sample = "\n\n".join(chunks[:3])  # Limit to 3 chunks
+                print(f"[DEBUG] Returning first chunks from shelve")
+                return sample
+            else:
+                print(f"[DEBUG] Key not found in shelve: {mag_key}")
                 return ""
-        print("[DEBUG] No DB query performed.")
-        return ""
     except Exception as e:
-        print(f"[ERROR] Could not connect to DB: {e}")
+        print(f"[ERROR] Failed to open or read shelve DB: {e}")
         return ""
-    finally:
-        if conn:
-            conn.close()
+
 
 @app.post("/webhook")
 async def webhook(request: Request):
