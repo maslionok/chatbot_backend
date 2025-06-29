@@ -60,6 +60,23 @@ def embed_query(query: str):
     resp = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY, model=EMBED_MODEL).embed_query(query)
     return np.array([resp]).astype("float32")
 
+def get_conversation_history(conversation_id: int):
+    """Fetch the full conversation history from Chatwoot and return as a list of (role, content) tuples."""
+    url = f"{CHATWOOT_URL}/api/v1/accounts/{CHATWOOT_ACCOUNT_ID}/conversations/{conversation_id}/messages"
+    headers = {"api_access_token": CHATWOOT_API_KEY}
+    response = requests.get(url, headers=headers)
+    if response.status_code != 200:
+        print("Failed to fetch conversation history:", response.text)
+        return []
+    messages = response.json().get("payload", [])
+    history = []
+    for msg in messages:
+        if msg["message_type"] == "incoming":
+            history.append(("user", msg["content"]))
+        elif msg["message_type"] == "outgoing":
+            history.append(("assistant", msg["content"]))
+    return history
+
 @app.post("/webhook")
 async def webhook(request: Request):
     data = await request.json()
@@ -86,7 +103,9 @@ async def webhook(request: Request):
     if not conversation_ai_status.get(conversation_id, True):
         return {"status": "AI paused - human in control"}
 
-    reply = generate_rag_reply(message)
+    # Fetch conversation history from Chatwoot
+    history = get_conversation_history(conversation_id)
+    reply = generate_rag_reply(message, history)
     send_reply_to_chatwoot(conversation_id, reply)
     return {"status": "ok"}
 
@@ -142,16 +161,15 @@ Do not explain. Just return one word: human, ai, or none."""),
     response = model.invoke(prompt)
     return response.content.strip().lower()
 
-def generate_rag_reply(question: str) -> str:
+def generate_rag_reply(question: str, history=None) -> str:
     # --- Use FAISS for retrieval ---
     if faiss_index is None or rag_chunks is None:
         return "Sorry, the knowledge base is not available right now."
     q_emb = embed_query(question)
-    D, I = faiss_index.search(q_emb, 5)  # Retrieve top 8 chunks
+    D, I = faiss_index.search(q_emb, 5)
     retrieved_chunks = [rag_chunks[i] for i in I[0] if i < len(rag_chunks)]
     context = "\n\n".join(retrieved_chunks)
 
-    # Compose prompt with only the most relevant context (much fewer tokens)
     system_prompt = (
         "You are an expert assistant specializing in curtains and our company. "
         "Answer user questions naturally, in a friendly and professional tone, as if you are speaking from your own expertise. "
@@ -161,16 +179,25 @@ def generate_rag_reply(question: str) -> str:
     )
     user_prompt = f"Context:\n{context}\n\nQuestion: {question}"
 
+    # --- Build message history for OpenAI ---
+    messages = [SystemMessage(content=system_prompt)]
+    messages.append(HumanMessage(content=user_prompt))
+    if history:
+        for role, content in history:
+            if role == "user":
+                messages.append(HumanMessage(content=content))
+            elif role == "assistant":
+                messages.append(SystemMessage(content=content))
+    # Add the current context/question as the last user message
+    messages.append(HumanMessage(content=user_prompt))
+
     # --- Debug: print word count estimate for input prompt ---
     total_words = len((system_prompt + user_prompt).split())
     approx_tokens = int(total_words * 0.75)
     print(f"[DEBUG] Input prompt: {total_words} words, ~{approx_tokens} tokens (words*0.75)")
 
     model = ChatOpenAI(openai_api_key=OPENAI_API_KEY, model_name=MODEL_NAME)
-    result = model.invoke([
-        SystemMessage(content=system_prompt),
-        HumanMessage(content=user_prompt)
-    ])
+    result = model.invoke(messages)
     return result.content
 
 def send_reply_to_chatwoot(conversation_id: int, content: str):
