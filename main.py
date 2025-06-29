@@ -17,7 +17,7 @@ import gzip
 import pickle
 import numpy as np
 
-MODEL_NAME = "gpt-4"
+MODEL_NAME = "gpt-4.1-mini"
 
 load_dotenv()
 app = FastAPI()
