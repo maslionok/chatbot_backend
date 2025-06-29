@@ -40,8 +40,8 @@ embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
 # --- RAG FAISS index and chunks ---
 def load_faiss_and_chunks():
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    faiss_path = os.path.join(base_dir, "data", "rag.index")
-    chunks_path = os.path.join(base_dir, "data", "rag_chunks.json")
+    faiss_path = os.path.join(base_dir, "rag", "rag.index")
+    chunks_path = os.path.join(base_dir, "rag", "rag_chunks.json")
     if not os.path.exists(faiss_path) or not os.path.exists(chunks_path):
         print(f"[ERROR] FAISS index or chunks file missing: {faiss_path}, {chunks_path}")
         return None, None

@@ -50,20 +50,30 @@ def embed_chunks(chunks, batch_size=100):
         embeddings.extend([d.embedding for d in resp.data])
     return np.array(embeddings).astype("float32")
 
+def ensure_dir_exists(path):
+    dir_path = os.path.dirname(os.path.abspath(path))
+    if not os.path.exists(dir_path):
+        os.makedirs(dir_path, exist_ok=True)
+
 def main():
-    import argparse
-    parser = argparse.ArgumentParser(description="Embed PDF and JSON text into FAISS index for RAG.")
-    parser.add_argument("--pdf_folder", required=True, help="Folder with .pdf files")
-    parser.add_argument("--json", required=True, help="JSON file with text chunks")
-    parser.add_argument("--faiss", required=True, help="Output FAISS index file")
-    parser.add_argument("--npy", required=False, help="Optional: Save embeddings as .npy file")
-    args = parser.parse_args()
+    # Hardcoded paths for your project structure
+    pdf_folder = "docs"
+    json_path = "json/crawl_chunks.json"
+    faiss_path = "rag/rag.index"
+    chunks_out = "rag/rag_chunks.json"
+    # Optionally, you can also save embeddings as .npy if needed
+    # npy_path = "data/rag_embs.npy"
+
+    # Ensure output directories exist
+    ensure_dir_exists(faiss_path)
+    ensure_dir_exists(chunks_out)
+    # If you want to use npy_path, also: ensure_dir_exists(npy_path)
 
     # Load data
-    pdf_chunks = load_pdf_texts(args.pdf_folder)
-    print(f"Loaded {len(pdf_chunks)} chunks from PDFs in {args.pdf_folder}")
-    json_chunks = load_json_chunks(args.json)
-    print(f"Loaded {len(json_chunks)} chunks from {args.json}")
+    pdf_chunks = load_pdf_texts(pdf_folder)
+    print(f"Loaded {len(pdf_chunks)} chunks from PDFs in {pdf_folder}")
+    json_chunks = load_json_chunks(json_path)
+    print(f"Loaded {len(json_chunks)} chunks from {json_path}")
 
     all_chunks = pdf_chunks + json_chunks
     print(f"Total chunks to embed: {len(all_chunks)}")
@@ -75,13 +85,17 @@ def main():
     # Save FAISS index
     index = faiss.IndexFlatL2(embeddings.shape[1])
     index.add(embeddings)
-    faiss.write_index(index, args.faiss)
-    print(f"Saved FAISS index to {args.faiss}")
+    faiss.write_index(index, faiss_path)
+    print(f"Saved FAISS index to {faiss_path}")
+
+    # Save chunks in the format main.py expects (JSON list, same order as FAISS)
+    with open(chunks_out, "w", encoding="utf-8") as f:
+        json.dump(all_chunks, f, ensure_ascii=False, indent=2)
+    print(f"Saved chunks to {chunks_out}")
 
     # Optionally save embeddings as .npy
-    if args.npy:
-        np.save(args.npy, embeddings)
-        print(f"Saved embeddings as {args.npy}")
+    # np.save(npy_path, embeddings)
+    # print(f"Saved embeddings as {npy_path}")
 
 if __name__ == "__main__":
     main()
