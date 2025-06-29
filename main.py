@@ -147,7 +147,7 @@ def generate_rag_reply(question: str) -> str:
     if faiss_index is None or rag_chunks is None:
         return "Sorry, the knowledge base is not available right now."
     q_emb = embed_query(question)
-    D, I = faiss_index.search(q_emb, 50)  # Retrieve top 8 chunks
+    D, I = faiss_index.search(q_emb, 20)  # Retrieve top 8 chunks
     retrieved_chunks = [rag_chunks[i] for i in I[0] if i < len(rag_chunks)]
     context = "\n\n".join(retrieved_chunks)
 
@@ -161,6 +161,11 @@ def generate_rag_reply(question: str) -> str:
         "If you don't know the answer, also tell the user they can ask to be switched to a real human. "
     )
     user_prompt = f"Context:\n{context}\n\nQuestion: {question}"
+
+    # --- Debug: print word count estimate for input prompt ---
+    total_words = len((system_prompt + user_prompt).split())
+    approx_tokens = int(total_words * 0.75)
+    print(f"[DEBUG] Input prompt: {total_words} words, ~{approx_tokens} tokens (words*0.75)")
 
     model = ChatOpenAI(openai_api_key=OPENAI_API_KEY, model_name=MODEL_NAME)
     result = model.invoke([
