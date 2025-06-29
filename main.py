@@ -58,7 +58,7 @@ def load_compressed(db, key):
 def query_db(question):
     # Use the new cache path as in crawl_and_cache.py
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    cache_dir = os.path.join(base_dir, ".new_cache")
+    cache_dir = os.path.join(base_dir, ".cache")
     shelve_path = os.path.join(cache_dir, "cache")  # Do NOT add ".db"
 
     print(f"[DEBUG] query_db called with question: {question}")
