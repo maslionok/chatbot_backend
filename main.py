@@ -16,6 +16,7 @@ import sqlite3
 import gzip
 import pickle
 import numpy as np
+import json
 
 MODEL_NAME = "gpt-4.1-mini"
 
@@ -55,41 +56,21 @@ def load_compressed(db, key):
     """Load a compressed object from shelve."""
     return pickle.loads(gzip.decompress(db[key]))
 
-def query_db(question):
+def load_crawl_chunks():
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    cache_dir = os.path.join(base_dir, ".cache")
-    shelve_path = os.path.join(cache_dir, "cache.db.db")
-
-    print(f"[DEBUG] query_db called with question: {question}")
-    print(f"[DEBUG] Looking for shelve DB at: {shelve_path}")
-
-    if not os.path.exists(shelve_path):
-        print(f"[ERROR] Shelve DB file does not exist at {shelve_path}")
-        return ""
-
+    crawl_json_path = os.path.join(base_dir, "data", "crawl_chunks.json")
+    print(f"[DEBUG] Loading crawl chunks from: {crawl_json_path}")
+    if not os.path.exists(crawl_json_path):
+        print(f"[ERROR] Crawl chunks file does not exist at {crawl_json_path}")
+        return []
     try:
-        with shelve.open(shelve_path) as db:
-            all_chunks = []
-            for key in db:
-                try:
-                    value = load_compressed(db, key)
-                    # If value is a tuple (chunks, embs), take chunks
-                    if isinstance(value, tuple) and isinstance(value[0], list):
-                        all_chunks.extend(value[0])
-                    elif isinstance(value, list):
-                        all_chunks.extend(value)
-                    elif isinstance(value, str):
-                        all_chunks.append(value)
-                except Exception as e:
-                    print(f"[ERROR] Could not decompress key {key}: {e}")
-            # Limit to first 50 chunks for safety
-            sample = "\n\n".join(all_chunks[:50])
-            print(f"[DEBUG] Returning {len(all_chunks[:50])} chunks from shelve")
-            return sample
+        with open(crawl_json_path, "r", encoding="utf-8") as f:
+            chunks = json.load(f)
+            print(f"[DEBUG] Loaded {len(chunks)} crawl chunks")
+            return chunks
     except Exception as e:
-        print(f"[ERROR] Failed to open or read shelve DB: {e}")
-        return ""
-
+        print(f"[ERROR] Failed to load crawl chunks: {e}")
+        return []
 
 @app.post("/webhook")
 async def webhook(request: Request):
@@ -180,14 +161,16 @@ def generate_rag_reply(question: str) -> str:
         retriever=retriever
     )
     pdf_answer = qa_chain.run(question)
-    db_context = query_db(question)
-    print(f"[DEBUG] db_context in generate_rag_reply: {db_context}")
+    crawl_chunks = load_crawl_chunks()
+    # Use all crawl chunks for context
+    crawl_context = "\n\n".join(crawl_chunks) if crawl_chunks else ""
+    print(f"[DEBUG] crawl_context in generate_rag_reply: {crawl_context[:500]}...")  # Print only first 500 chars
 
     # Compose context for the prompt
     context = ""
-    if db_context:
-        print(f"[DEBUG] We actually have db_context")
-        context += f"Database context:\n{db_context}\n\n"
+    if crawl_context:
+        print(f"[DEBUG] We actually have crawl_context")
+        context += f"Crawled website context:\n{crawl_context}\n\n"
     context += f"Document-based answer:\n{pdf_answer}"
 
     # Polite, friendly, and helpful system prompt
