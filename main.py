@@ -147,18 +147,17 @@ def generate_rag_reply(question: str) -> str:
     if faiss_index is None or rag_chunks is None:
         return "Sorry, the knowledge base is not available right now."
     q_emb = embed_query(question)
-    D, I = faiss_index.search(q_emb, 20)  # Retrieve top 8 chunks
+    D, I = faiss_index.search(q_emb, 5)  # Retrieve top 8 chunks
     retrieved_chunks = [rag_chunks[i] for i in I[0] if i < len(rag_chunks)]
     context = "\n\n".join(retrieved_chunks)
 
     # Compose prompt with only the most relevant context (much fewer tokens)
     system_prompt = (
-        "You are a precise and polite assistant. Answer ONLY based on the provided context below. "
-        "If the answer is not in the context, say you don't know in a friendly and polite way. "
-        "Be helpful and avoid rudeness. "
-        "If the answer must be short, try to make it a bit longer and more polite, offering a friendly tone. "
-        "Do not use any outside knowledge. "
-        "If you don't know the answer, also tell the user they can ask to be switched to a real human. "
+        "You are an expert assistant specializing in curtains and our company. "
+        "Answer user questions naturally, in a friendly and professional tone, as if you are speaking from your own expertise. "
+        "Do NOT mention or reference any context, sources, or documents. "
+        "Keep your replies short, precise, and directly address the user's question. "
+        "If you don't know the answer, politely say so and let the user know they can ask to be switched to a real human."
     )
     user_prompt = f"Context:\n{context}\n\nQuestion: {question}"
 
