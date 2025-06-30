@@ -63,7 +63,7 @@ def embed_query(query: str):
 @app.post("/webhook")
 async def webhook(request: Request):
     data = await request.json()
-    print("Webhook received:", data)
+    # print("Webhook received:", data)
 
     if data.get("message_type") != "incoming":
         return {"status": "ignored"}
@@ -72,7 +72,7 @@ async def webhook(request: Request):
     message = data.get("content", "")
 
     intent = detect_user_intent(message)
-    print(f"User intent: {intent}")
+    # print(f"User intent: {intent}")
 
     if intent == "human":
         conversation_ai_status[conversation_id] = False
@@ -163,7 +163,12 @@ def get_conversation_history(conversation_id: int) -> list:
             history.append(f"user: {content}")
     return history
 
+# --- Global counters for averaging ---
+total_words_sum = 0
+total_calls = 0
+
 def generate_rag_reply(conversation_id: int, question: str) -> str:
+    global total_words_sum, total_calls
     if faiss_index is None or rag_chunks is None:
         return "Sorry, the knowledge base is not available right now."
 
@@ -191,7 +196,15 @@ def generate_rag_reply(conversation_id: int, question: str) -> str:
 
     total_words = len((system_prompt + user_prompt).split())
     approx_tokens = int(total_words * 0.75)
+
+    # Update global counters
+    total_words_sum += total_words
+    total_calls += 1
+    avg_words = total_words_sum / total_calls
+    avg_tokens = avg_words * 0.75
+
     print(f"[DEBUG] Input prompt: {total_words} words, ~{approx_tokens} tokens (words*0.75)")
+    print(f"[DEBUG] Running average: {avg_words:.2f} words, {avg_tokens:.2f} tokens over {total_calls} calls")
 
     model = ChatOpenAI(openai_api_key=OPENAI_API_KEY, model_name=MODEL_NAME)
     result = model.invoke([
