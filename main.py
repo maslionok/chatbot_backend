@@ -154,9 +154,9 @@ def get_conversation_history(conversation_id: int) -> list:
     messages = response.json().get("payload", [])
     history = []
     for msg in messages:
-        sender = msg["sender"]["name"]
-        content = msg["content"]
-        msg_type = msg["message_type"]
+        # Some messages may not have a "sender" key (e.g., activity messages)
+        content = msg.get("content", "")
+        msg_type = msg.get("message_type")
         if msg_type == 1:
             history.append(f"bot: {content}")
         elif msg_type == 0:
