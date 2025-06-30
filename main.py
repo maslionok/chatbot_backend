@@ -2,11 +2,19 @@ from fastapi import FastAPI, Request
 import os
 import requests
 import shelve
+# import asyncio  # No longer used for auto-greetings
 from dotenv import load_dotenv
 from langchain.embeddings.openai import OpenAIEmbeddings
 from langchain.vectorstores import FAISS
+from langchain.text_splitter import CharacterTextSplitter
+from langchain.document_loaders import PyPDFLoader
+from langchain.chains import RetrievalQA
 from langchain.chat_models import ChatOpenAI
 from langchain.schema import SystemMessage, HumanMessage
+import sqlite3
+# from datetime import datetime, timedelta  # No longer needed for greetings
+import gzip
+import pickle
 import numpy as np
 import json
 import faiss
@@ -24,9 +32,10 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 # Global stores
 conversation_ai_status = {}
+# last_greet_sent = {}  # Removed greeting tracking
 
 # Use the same embedding model for both library and user queries
-EMBED_MODEL = "text-embedding-3-large"
+EMBED_MODEL = "text-embedding-3-large"  # Must match the model used in embed_pdfs_and_json_to_faiss.py
 
 # LangChain
 embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY, model=EMBED_MODEL)
@@ -47,6 +56,7 @@ def load_faiss_and_chunks():
 faiss_index, rag_chunks = load_faiss_and_chunks()
 
 def embed_query(query: str):
+    # Use the same model as for the library embeddings
     resp = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY, model=EMBED_MODEL).embed_query(query)
     return np.array([resp]).astype("float32")
 
@@ -80,6 +90,44 @@ async def webhook(request: Request):
     send_reply_to_chatwoot(conversation_id, reply)
     return {"status": "ok"}
 
+# @app.post("/contact_opened")
+# async def contact_opened(request: Request):
+#     data = await request.json()
+#     print("Contact opened:", data)
+
+#     conversation = data.get("current_conversation")
+#     if not conversation or "id" not in conversation:
+#         print("Missing conversation ID in payload.")
+#         return {"status": "error", "detail": "Missing conversation ID."}
+
+#     conversation_id = conversation["id"]
+
+#     now = datetime.utcnow()
+#     last_greet = last_greet_sent.get(conversation_id)
+
+#     if last_greet and now - last_greet < timedelta(minutes=20):
+#         print(f"Skipping greet for conversation {conversation_id}: recently greeted.")
+#         return {"status": "skipped"}
+
+#     last_greet_sent[conversation_id] = now
+#     asyncio.create_task(wait_and_greet(conversation_id))
+#     return {"status": "ok"}
+
+# async def wait_and_greet(conversation_id: int):
+#     await asyncio.sleep(60)
+#     if is_user_still_inactive(conversation_id):
+#         send_reply_to_chatwoot(conversation_id, "Hey 👋 Could I assist you today?")
+
+# def is_user_still_inactive(conversation_id: int) -> bool:
+#     url = f"{CHATWOOT_URL}/api/v1/accounts/{CHATWOOT_ACCOUNT_ID}/conversations/{conversation_id}/messages"
+#     headers = {"api_access_token": CHATWOOT_API_KEY}
+#     response = requests.get(url, headers=headers)
+#     if response.status_code != 200:
+#         print("Failed to check messages:", response.text)
+#         return False
+#     messages = response.json().get("payload", [])
+#     return all(msg["message_type"] != "incoming" for msg in messages)
+
 def detect_user_intent(message: str) -> str:
     model = ChatOpenAI(openai_api_key=OPENAI_API_KEY)
     prompt = [
@@ -98,7 +146,7 @@ def get_conversation_history(conversation_id: int) -> list:
     url = f"{CHATWOOT_URL}/api/v1/accounts/{CHATWOOT_ACCOUNT_ID}/conversations/{conversation_id}/messages"
     headers = {"api_access_token": CHATWOOT_API_KEY}
     response = requests.get(url, headers=headers)
-    
+
     if response.status_code != 200:
         print(f"[ERROR] Failed to fetch chat history: {response.text}")
         return []
@@ -125,7 +173,7 @@ def generate_rag_reply(conversation_id: int, question: str) -> str:
     context = "\n\n".join(retrieved_chunks)
 
     chat_history = get_conversation_history(conversation_id)
-    history_snippet = "\n".join(chat_history[-10:])  # Last 10 messages
+    history_snippet = "\n".join(chat_history[-10:])
 
     system_prompt = (
         "You are an expert assistant specializing in curtains and our company. "
