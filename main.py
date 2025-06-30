@@ -2,19 +2,11 @@ from fastapi import FastAPI, Request
 import os
 import requests
 import shelve
-# import asyncio  # No longer used for auto-greetings
 from dotenv import load_dotenv
 from langchain.embeddings.openai import OpenAIEmbeddings
 from langchain.vectorstores import FAISS
-from langchain.text_splitter import CharacterTextSplitter
-from langchain.document_loaders import PyPDFLoader
-from langchain.chains import RetrievalQA
 from langchain.chat_models import ChatOpenAI
 from langchain.schema import SystemMessage, HumanMessage
-import sqlite3
-# from datetime import datetime, timedelta  # No longer needed for greetings
-import gzip
-import pickle
 import numpy as np
 import json
 import faiss
@@ -32,10 +24,9 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 # Global stores
 conversation_ai_status = {}
-# last_greet_sent = {}  # Removed greeting tracking
 
 # Use the same embedding model for both library and user queries
-EMBED_MODEL = "text-embedding-3-large"  # Must match the model used in embed_pdfs_and_json_to_faiss.py
+EMBED_MODEL = "text-embedding-3-large"
 
 # LangChain
 embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY, model=EMBED_MODEL)
@@ -56,7 +47,6 @@ def load_faiss_and_chunks():
 faiss_index, rag_chunks = load_faiss_and_chunks()
 
 def embed_query(query: str):
-    # Use the same model as for the library embeddings
     resp = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY, model=EMBED_MODEL).embed_query(query)
     return np.array([resp]).astype("float32")
 
@@ -86,47 +76,9 @@ async def webhook(request: Request):
     if not conversation_ai_status.get(conversation_id, True):
         return {"status": "AI paused - human in control"}
 
-    reply = generate_rag_reply(message)
+    reply = generate_rag_reply(conversation_id, message)
     send_reply_to_chatwoot(conversation_id, reply)
     return {"status": "ok"}
-
-# @app.post("/contact_opened")
-# async def contact_opened(request: Request):
-#     data = await request.json()
-#     print("Contact opened:", data)
-
-#     conversation = data.get("current_conversation")
-#     if not conversation or "id" not in conversation:
-#         print("Missing conversation ID in payload.")
-#         return {"status": "error", "detail": "Missing conversation ID."}
-
-#     conversation_id = conversation["id"]
-
-#     now = datetime.utcnow()
-#     last_greet = last_greet_sent.get(conversation_id)
-
-#     if last_greet and now - last_greet < timedelta(minutes=20):
-#         print(f"Skipping greet for conversation {conversation_id}: recently greeted.")
-#         return {"status": "skipped"}
-
-#     last_greet_sent[conversation_id] = now
-#     asyncio.create_task(wait_and_greet(conversation_id))
-#     return {"status": "ok"}
-
-# async def wait_and_greet(conversation_id: int):
-#     await asyncio.sleep(60)
-#     if is_user_still_inactive(conversation_id):
-#         send_reply_to_chatwoot(conversation_id, "Hey 👋 Could I assist you today?")
-
-# def is_user_still_inactive(conversation_id: int) -> bool:
-#     url = f"{CHATWOOT_URL}/api/v1/accounts/{CHATWOOT_ACCOUNT_ID}/conversations/{conversation_id}/messages"
-#     headers = {"api_access_token": CHATWOOT_API_KEY}
-#     response = requests.get(url, headers=headers)
-#     if response.status_code != 200:
-#         print("Failed to check messages:", response.text)
-#         return False
-#     messages = response.json().get("payload", [])
-#     return all(msg["message_type"] != "incoming" for msg in messages)
 
 def detect_user_intent(message: str) -> str:
     model = ChatOpenAI(openai_api_key=OPENAI_API_KEY)
@@ -142,16 +94,39 @@ Do not explain. Just return one word: human, ai, or none."""),
     response = model.invoke(prompt)
     return response.content.strip().lower()
 
-def generate_rag_reply(question: str) -> str:
-    # --- Use FAISS for retrieval ---
+def get_conversation_history(conversation_id: int) -> list:
+    url = f"{CHATWOOT_URL}/api/v1/accounts/{CHATWOOT_ACCOUNT_ID}/conversations/{conversation_id}/messages"
+    headers = {"api_access_token": CHATWOOT_API_KEY}
+    response = requests.get(url, headers=headers)
+    
+    if response.status_code != 200:
+        print(f"[ERROR] Failed to fetch chat history: {response.text}")
+        return []
+
+    messages = response.json().get("payload", [])
+    history = []
+    for msg in messages:
+        sender = msg["sender"]["name"]
+        content = msg["content"]
+        msg_type = msg["message_type"]
+        if msg_type == 1:
+            history.append(f"bot: {content}")
+        elif msg_type == 0:
+            history.append(f"user: {content}")
+    return history
+
+def generate_rag_reply(conversation_id: int, question: str) -> str:
     if faiss_index is None or rag_chunks is None:
         return "Sorry, the knowledge base is not available right now."
+
     q_emb = embed_query(question)
-    D, I = faiss_index.search(q_emb, 8)  # Retrieve top 8 chunks
+    D, I = faiss_index.search(q_emb, 8)
     retrieved_chunks = [rag_chunks[i] for i in I[0] if i < len(rag_chunks)]
     context = "\n\n".join(retrieved_chunks)
 
-    # Compose prompt with only the most relevant context (much fewer tokens)
+    chat_history = get_conversation_history(conversation_id)
+    history_snippet = "\n".join(chat_history[-10:])  # Last 10 messages
+
     system_prompt = (
         "You are an expert assistant specializing in curtains and our company. "
         "Answer user questions naturally, in a friendly and professional tone, as if you are speaking from your own expertise. "
@@ -159,9 +134,13 @@ def generate_rag_reply(question: str) -> str:
         "Keep your replies short, precise, and directly address the user's question. "
         "If you don't know the answer, politely say so and let the user know they can ask to be switched to a real human."
     )
-    user_prompt = f"Context:\n{context}\n\nQuestion: {question}"
 
-    # --- Debug: print word count estimate for input prompt ---
+    user_prompt = (
+        f"Chat history so far:\n{history_snippet}\n\n"
+        f"Relevant context:\n{context}\n\n"
+        f"User now asks:\n{question}"
+    )
+
     total_words = len((system_prompt + user_prompt).split())
     approx_tokens = int(total_words * 0.75)
     print(f"[DEBUG] Input prompt: {total_words} words, ~{approx_tokens} tokens (words*0.75)")
