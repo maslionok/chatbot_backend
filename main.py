@@ -29,6 +29,8 @@ CHATWOOT_URL = os.getenv("CHATWOOT_URL")
 CHATWOOT_API_KEY = os.getenv("CHATWOOT_API_KEY")
 CHATWOOT_ACCOUNT_ID = os.getenv("CHATWOOT_ACCOUNT_ID")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 # Global stores
 conversation_ai_status = {}
@@ -60,6 +62,22 @@ def embed_query(query: str):
     resp = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY, model=EMBED_MODEL).embed_query(query)
     return np.array([resp]).astype("float32")
 
+def notify_telegram_user_needs_help(conversation_id: int):
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        print("[WARN] Telegram bot token or chat ID not set.")
+        return
+    message = f"User in conversation {conversation_id} has requested to speak to a real agent."
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    payload = {
+        "chat_id": TELEGRAM_CHAT_ID,
+        "text": message
+    }
+    try:
+        resp = requests.post(url, json=payload, timeout=5)
+        print(f"Telegram notify response: {resp.status_code} {resp.text}")
+    except Exception as e:
+        print(f"[ERROR] Failed to notify Telegram: {e}")
+
 @app.post("/webhook")
 async def webhook(request: Request):
     data = await request.json()
@@ -77,6 +95,7 @@ async def webhook(request: Request):
     if intent == "human":
         conversation_ai_status[conversation_id] = False
         send_reply_to_chatwoot(conversation_id, "Switching to a real agent, please wait...")
+        notify_telegram_user_needs_help(conversation_id)
         return {"status": "AI paused"}
     elif intent == "ai":
         conversation_ai_status[conversation_id] = True
