@@ -185,7 +185,8 @@ def generate_rag_reply(conversation_id: int, question: str) -> str:
         "Answer user questions naturally, in a friendly and professional tone, as if you are speaking from your own expertise. "
         "Do NOT mention or reference any context, sources, or documents. "
         "Keep your replies short, precise, and directly address the user's question. "
-        "If you don't know the answer, politely say so and let the user know they can ask to be switched to a real human."
+        "If you don't know the answer, politely say so and let the user know they can ask to be switched to a real human. "
+        "If the user asks for a direct link to a product, use the base URL 'https://sklep.idescu.pl/' and append the product's 'url_key' value from the context, ending with '.html'. For example: https://sklep.idescu.pl/{url_key}.html"
     )
 
     user_prompt = (
